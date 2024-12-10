@@ -17,7 +17,7 @@ Primo Script: **generate_data.py**
   Il file generato sarà salvato all'interno della cartealla **migrate**.
 
     
-Secondo Script **migrate_to_sql.py**
+Secondo Script **migrate_to_sql.py**  
   Legge i dati dal file **.xlsx** crea una tabella **SQL** con i dati presenti all'interno del file e ne valida la correttezza .
   
       Se l'operazione riesce il nome del file verrà registrato in un file di log.
