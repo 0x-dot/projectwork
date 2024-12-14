@@ -1,6 +1,8 @@
 import os
 import sys
 import datetime
+import sqlite3
+import pandas as pd
 
 #directory 
 directory = "generated_data"
@@ -86,11 +88,59 @@ def migration_status(fileList, logFile):
     
     return statusMap
 
-
-
-def migrate_to_db():
-    """ TBD.. """
+#questa funzione mi serve per recuperare il nome del file eliminando la parte di data ed ora autogenerati
+def get_name_of_file(filename):
     
+    name_no_ext=filename.rsplit('.',1)[0]
+    
+    name = name_no_ext.rsplit('_',1)[2]
+    
+    return name.lower().replace("","_")
+    
+
+def migrate_to_db(filename):
+    
+    conn=sqlite3.connect('migration.db')
+    c = conn.cursor()
+    
+    
+    #lettura file .xlxs
+    data= pd.read_excel(os.path(directory,filename))
+    
+    
+    
+    tableName= get_name_of_file(filename)
+    
+    #spostare questa dentro una funzione conviene per rendere il codice piu pulito
+    
+    columns =", ".join([f"{col.replace(' ','_').lower()} TEXT" for col in data.columns])
+    create_table = f"CREATE TABLE IF NOT EXISTS {tableName} ({columns});"
+    c.execute(create_table)
+    
+    print(f"Fine creazione tabella SQL...")
+    
+    print(f"Inserimento dati...")
+    insert_data_on_db(conn,c,tableName,data)
+    
+    conn.close()  
+    
+
+def insert_data_on_db (conn,c,tableName,data):
+    try:
+        conn.execute("BEGIN TRANSACTION;")
+        
+        for row in data.intertuples(index=False,name=None):
+            placeholders = ", ".join("?"*len(row))
+            insert=f"INSERT INTO {tableName} VALUES ({placeholders});"
+            c.executoe(insert,row)
+            
+        conn.commit()
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"errore durante la insert sul db: {e}")
+   
+         
     
 
 def migratio_phase(fileList,statusMap):
