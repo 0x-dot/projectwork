@@ -3,8 +3,8 @@ Traccia del Project work n.2.1
 Ruolo della privacy e sull'importanza dl GDPR
 
 Linguaggio utilizzato  
-Python versione **3.12**  
-Database Utilizzato **SQLite**
+Python version --->  **3.10.12**  
+Database Utilizzato ---->  **SQLite**
 
 Primo Script: **generate_data.py**  
   Crea un file **.xlsx** a partire da dati generati casualmente.  
@@ -14,11 +14,14 @@ Primo Script: **generate_data.py**
      
       Se non viene passato nessun input lo script genererà automaticamente un nome univoco per i file da migrare.
       
-  Il file generato sarà salvato all'interno della cartealla **migrate**.
+  Il file generato sarà salvato all'interno della cartealla **gemerated_data**.
 
     
 Secondo Script **migrate_to_sql.py**  
   Legge i dati dal file **.xlsx** crea una tabella **SQL** con i dati presenti all'interno del file e ne valida la correttezza .
   
       Se l'operazione riesce il nome del file verrà registrato in un file di log.
+  
+  Il file di log potranno essere visualizzati all'interno della cartella **migration_log**.
+
 

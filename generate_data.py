@@ -22,8 +22,7 @@ def create_directory():
        print("Directory ", directory, " already exists")
 
 
-#funzione per notificare all'utete che il nome passato come argomento contiene caratteri non validi
-#l'espressione regolare
+#check validazione nome file
 def invalid_name(filename):
    #controlliamo se filename contiene caratteri non validi e notifichiamo l'utente   
    if not re.match(r'^[a-zA-Z0-9_-]+$',filename):
@@ -50,7 +49,7 @@ def generate_dataset():
        dataset.append(entry)   
    return dataset
 
-#crezione file
+#creazione file
 def create_file(filename, dataset):
 
     if invalid_name(filename):
@@ -69,7 +68,7 @@ def create_file(filename, dataset):
         df=pd.DataFrame(dataset)
         df.to_excel(path, index=False)
         print("File creato con successo")
-        print("Percorso del file", path)
+        print("Il file si trova ---> ", path)
     except Exception as e:
         print("Errore durante la creazione del file",e)
 
@@ -83,7 +82,7 @@ def parser():
 
 def main():
    create_directory()
-   
+
    arg=parser()
 
    dataset = generate_dataset()
