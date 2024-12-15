@@ -9,6 +9,7 @@ directory = "generated_data"
 log_directory="migration_log"
 log_file = os.path.join(log_directory,"migration.log")
 
+db_name = "migration.db"
 
 LOG_FILE_NOT_FOUND = "log_file_not_found"
 FILE_NOT_MIGRATED ="file_not_migrated"
@@ -100,7 +101,7 @@ def migrate_to_db(filename):
     print(f"Migration in progress..")
     
     try:    
-       with sqlite3.connect('migration.db') as conn:
+       with sqlite3.connect(db_name) as conn:
         c = conn.cursor()
                 
         data= pd.read_excel(os.path.join(directory,filename))
@@ -108,10 +109,12 @@ def migrate_to_db(filename):
         
         create_table_on_db(c,table_name,data)        
         insert_data_on_db(conn,c,table_name,data)
-        write_log(filename)   
+        write_log(filename)
     
     except Exception as e:
-        print(f"Error during data migration: {e}")    
+        print(f"Error during data migration: {e}")
+    
+      
    
     
 #Create table on db
@@ -119,7 +122,9 @@ def create_table_on_db(c,table_name,data):
     print(f"Create SQL table...")
     
     try:
-        columns =", ".join([f"{col.replace(' ','_').lower()} TEXT" for col in data.columns])
+        columns= "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        columns += ", ".join([f"{col.replace(' ','_').lower()} TEXT" for col in data.columns])
+        print(f"Columns: {columns}")        
         create_table = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});"
         c.execute(create_table)
         print(f"Succesfully created SQL table {table_name}")
@@ -136,11 +141,14 @@ def create_table_on_db(c,table_name,data):
 def insert_data_on_db (conn,c,table_name,data):
     print(f"Insert data into SQL table {table_name}...")
     try:
-        conn.execute("BEGIN TRANSACTION;")
+        conn.execute("BEGIN TRANSACTION;")        
+
+        columns = ", ".join([col.replace(' ', '_').lower() for col in data.columns])
         
         for row in data.itertuples(index=False,name=None):
             placeholders = ", ".join("?"*len(row))
-            insert=f"INSERT INTO {table_name} VALUES ({placeholders});"
+            insert=f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"
+            print(f"Inserting data: {insert}")
             c.execute(insert,row)            
         conn.commit()
         print(f"Successfully inserted data into SQL table {table_name}")
@@ -165,21 +173,73 @@ def migration_phase(fileList,statusMap):
             migrate_to_db(filename)            
         else:
             print(f"File {filename} already migrated, skipping")
-        
-        
+
+
+def get_name_of_files_migrated():
+    try:
+        with open(log_file,'r') as log:
+            file_migrated = {line.strip() for line in log.readlines()}
+            return file_migrated
+    except Exception as e:
+        print(f"Error during file name extraction: {e}")
+        return []
+
+def get_name_of_table_on_DB():
+    print(f"Get name of table on database {db_name}...")
+    try:
+        with sqlite3.connect(db_name) as conn:
+            c = conn.cursor()
+            c.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = c.fetchall()
+            return tables
+    except Exception as e:
+        print(f"Error during table name extraction: {e}")
+        return []
+    
+
+
+def consistency_check():
+    print(f"Consistency check in progress...")
+    tablesName = get_name_of_table_on_DB()
+    print(f"Tables in database: {tablesName}")
+    migratedFiles = get_name_of_files_migrated()    
+    
+    for file in migratedFiles:
+        tableName = get_name_of_file(file)
+        if tableName not in tablesName:
+            print(f"Table {tableName} not found in database")
+        else:
+            print(f"Table {tableName} found in database")
+    
+    
+    
+    
+    
+    
+    
+    
+
+     
         
 #Main function
 def main():
     initialize_logger()
-    filesToBeMigrate = check_exist_migration_file()
+    files_to_be_migrate = check_exist_migration_file()
 
-    if filesToBeMigrate:
+    if files_to_be_migrate:
         print("Ready for migration..")
         tobemigrate = input("Are you sure you want to proceed? (y/n): ")
          
         if tobemigrate == "y":
-            statusMap = migration_status(filesToBeMigrate,log_file)
-            migration_phase(filesToBeMigrate,statusMap)            
+            status_map = migration_status(files_to_be_migrate,log_file)
+            migration_phase(files_to_be_migrate,status_map)     
+            print("Migration completed")
+            tobeConsistencyCheck = input("Do you want to perform a consistency check? (y/n): ")
+            if tobeConsistencyCheck == "y":
+                consistency_check()
+            else:
+                print("Consistency check aborted")
+                   
         else:
             print("Migration aborted")
 

@@ -14,7 +14,7 @@ Primo Script: **generate_data.py**
      
       Se non viene passato nessun input lo script genererà automaticamente un nome univoco per i file da migrare.
       
-  Il file generato sarà salvato all'interno della cartealla **gemerated_data**.
+  Il file generato sarà salvato all'interno della cartealla **generated_data**.
 
     
 Secondo Script **migrate_to_sql.py**  
