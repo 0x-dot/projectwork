@@ -32,7 +32,7 @@ def invalid_name(filename):
 
 
 def generate_name(filename):    
-    return f"{filename}_{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M_%S')}"
+    return f"{filename}@{datetime.datetime.now().strftime('%d-%m-%Y_%H-%M_%S')}"
 
 
 

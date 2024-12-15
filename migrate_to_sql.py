@@ -6,8 +6,8 @@ import pandas as pd
 
 #directory 
 directory = "generated_data"
-logDirectory="migration_log"
-logFile = os.path.join(logDirectory,"migration.log")
+log_directory="migration_log"
+log_file = os.path.join(log_directory,"migration.log")
 
 
 LOG_FILE_NOT_FOUND = "log_file_not_found"
@@ -15,64 +15,62 @@ FILE_NOT_MIGRATED ="file_not_migrated"
 FILE_MIGRATED= "file_migrated"
 
 
-#inizializzazione logger file
-def initialize_logger():
-    
+
+#Initialize logger directory and file
+def initialize_logger():    
     try:   
-        if not os.path.exists(logDirectory):
-            os.makedirs(logDirectory)
-            print("Directory ", logDirectory, " Created ")
+        if not os.path.exists(log_directory):
+            os.makedirs(log_directory)
+            print("Directory ", log_directory, " Created ")
         
-        if not os.path.exists(logFile):
-            with open(logFile,'w') as log:
-                log.write(f"Log di migrazione {datetime.datetime.now()}\n")
+        if not os.path.exists(log_file):
+            with open(log_file,'w') as log:
+                log.write(f"List of migrated file: \n")
         
         else:
-            print("Logger file ", logFile, " already exists")
+            print("Logger file ", log_file)
         
             
     except Exception as e:
-        print(f"Errore durante inizializzazione logger: {e}")
+        print(f"Error during logger initialization: {e}")
 
 
+
+#Write log file
 def write_log(fileName):
     try:
-        with open(logFile,'a') as log:
-                log.write(f"{fileName}\n")
+        with open(log_file,'a') as log:
+            log.write(f"{fileName}\n")                
     
     except Exception as e:
-        print(f"Errore durante la scrittura del file di log: {e}")
+        print(f"Error during log writing: {e}")
 
 
-#Questa funzione controlla se esistono file .xlxs da migrare e restituisce
-#la lista dei file .
-def check_exist_migration_file():
-    #controllo esistenza directory 
+#Check migration file  
+def check_exist_migration_file():    
     if not os.path.exists(directory):       
-       print("Directory not exist")
+       print(f"Directory {directory} not found.")
        return []
-   
-        #lista file .xlxs
+       
     filesToMigrate = [ file for file in os.listdir(directory) if file.endswith(".xlsx")]
 
     if not filesToMigrate:
-        print("Non sono presenti file .xlsx")
+        print("No file avaiable for migration.")
         return []
         
-    print(f"Sono stati trovati numero {len(filesToMigrate)} file nella directory")
-
+    print(f"Number {len(filesToMigrate)} files were detected in the directory")
     for file in filesToMigrate:
         print(" --- ",file)
     
     return filesToMigrate
 
 
-
-def migration_status(fileList, logFile):
+#retunr status of migration file 
+def migration_status(fileList, log_file):
     statusMap ={}
-    
-    if os.path.exists(logFile):
-        with open(logFile,'r') as log:
+        
+    if os.path.exists(log_file):
+        with open(log_file,'r') as log:
             fileMigrated = {line.strip() for line in log.readlines()}
             
         for filename in fileList:           
@@ -88,100 +86,104 @@ def migration_status(fileList, logFile):
     
     return statusMap
 
-#questa funzione mi serve per recuperare il nome del file eliminando la parte di data ed ora autogenerati
-def get_name_of_file(filename):
+#Get name of file 
+def get_name_of_file(filename):    
+    if "@"  not in filename:
+        raise ValueError("Invalid file name {filename}, missing '@' flag")
     
-    name_no_ext=filename.rsplit('.',1)[0]
-    
-    name = name_no_ext.rsplit('_',1)[2]
-    
-    return name.lower().replace("","_")
+    return filename.split("@",1)[0]
     
 
+
+#Migrate data to db
 def migrate_to_db(filename):
+    print(f"Migration in progress..")
     
-    conn=sqlite3.connect('migration.db')
-    c = conn.cursor()
+    try:    
+       with sqlite3.connect('migration.db') as conn:
+        c = conn.cursor()
+                
+        data= pd.read_excel(os.path.join(directory,filename))
+        table_name= get_name_of_file(filename)
+        
+        create_table_on_db(c,table_name,data)        
+        insert_data_on_db(conn,c,table_name,data)
+        write_log(filename)   
+    
+    except Exception as e:
+        print(f"Error during data migration: {e}")    
+   
+    
+#Create table on db
+def create_table_on_db(c,table_name,data):
+    print(f"Create SQL table...")
+    
+    try:
+        columns =", ".join([f"{col.replace(' ','_').lower()} TEXT" for col in data.columns])
+        create_table = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});"
+        c.execute(create_table)
+        print(f"Succesfully created SQL table {table_name}")
+        
+    except Exception as e:
+        print(f"Error during table {table_name} creation: {e}")   
+    
+    print(f"End of SQL table creation..")
     
     
-    #lettura file .xlxs
-    data= pd.read_excel(os.path(directory,filename))
-    
-    
-    
-    tableName= get_name_of_file(filename)
-    
-    #spostare questa dentro una funzione conviene per rendere il codice piu pulito
-    
-    columns =", ".join([f"{col.replace(' ','_').lower()} TEXT" for col in data.columns])
-    create_table = f"CREATE TABLE IF NOT EXISTS {tableName} ({columns});"
-    c.execute(create_table)
-    
-    print(f"Fine creazione tabella SQL...")
-    
-    print(f"Inserimento dati...")
-    insert_data_on_db(conn,c,tableName,data)
-    
-    conn.close()  
     
 
-def insert_data_on_db (conn,c,tableName,data):
+#Insert data on db
+def insert_data_on_db (conn,c,table_name,data):
+    print(f"Insert data into SQL table {table_name}...")
     try:
         conn.execute("BEGIN TRANSACTION;")
         
-        for row in data.intertuples(index=False,name=None):
+        for row in data.itertuples(index=False,name=None):
             placeholders = ", ".join("?"*len(row))
-            insert=f"INSERT INTO {tableName} VALUES ({placeholders});"
-            c.executoe(insert,row)
-            
+            insert=f"INSERT INTO {table_name} VALUES ({placeholders});"
+            c.execute(insert,row)            
         conn.commit()
+        print(f"Successfully inserted data into SQL table {table_name}")
         
     except Exception as e:
         conn.rollback()
-        print(f"errore durante la insert sul db: {e}")
+        print(f"Error during insert data into SQL table {table_name}: {e}")
    
          
     
-
-def migratio_phase(fileList,statusMap):
-    
-    for filename in fileList:
-        
+#Migration phase
+def migration_phase(fileList,statusMap):    
+    for filename in fileList:        
         status = statusMap.get(filename)
         
         if status == LOG_FILE_NOT_FOUND:
-            print(f"file di log non trovato impossibile continuare")
+            print(f"Log file not found, migration aborted")
+            return
         
         elif status == FILE_NOT_MIGRATED:
-            print(f"file {filename} da migrare")
-            print(f"Migrazione in corso..")
-            write_log(filename)
+            print(f"File {filename} to be migrated")
+            migrate_to_db(filename)            
         else:
-            print(f"file {filename} gia migrato, nessuna azione prevista")
+            print(f"File {filename} already migrated, skipping")
         
         
         
-    
-
-
-
+#Main function
 def main():
     initialize_logger()
     filesToBeMigrate = check_exist_migration_file()
 
     if filesToBeMigrate:
-        print("pronto per la migrazione")
-        tobemigrate = input("vuoi procedere con la migrazione? (y/n): ")
+        print("Ready for migration..")
+        tobemigrate = input("Are you sure you want to proceed? (y/n): ")
          
-        if tobemigrate == "s" or "S":
-            statusMap = migration_status(filesToBeMigrate,logFile)
-            migratio_phase(filesToBeMigrate,statusMap)            
+        if tobemigrate == "y":
+            statusMap = migration_status(filesToBeMigrate,log_file)
+            migration_phase(filesToBeMigrate,statusMap)            
         else:
-            print("Migrazione annullata")
+            print("Migration aborted")
 
     
-
-
 
 if __name__ == "__main__":
    main()
