@@ -4,6 +4,7 @@ import datetime
 import sqlite3
 import pandas as pd
 import argparse
+import re
 import importlib.util
 
 #log directory
@@ -16,6 +17,16 @@ LOG_FILE_NOT_FOUND = "log_file_not_found"
 FILE_NOT_MIGRATED ="file_not_migrated"
 FILE_MIGRATED= "file_migrated"
 
+
+def check_table_name_is_valid(table_name):
+    response=False
+    pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*$'
+    if re.match(pattern,table_name):        
+        response=True
+    
+    return response
+
+    
 
 
 #Initialize logger directory and file
@@ -52,16 +63,18 @@ def write_log(fileName,table_name):
 def check_exist_migration_file(file_path):
 
     if not os.path.isabs(file_path):
+       print(os.getcwd()) 
        file_path = os.path.join(os.getcwd(),file_path)
+       
 
 
     if not os.path.exists(file_path):
        print(f"File {file_path} not found.")
-       return None
+       return None,None
   
     if not file_path.endswith(".xlsx"):
        print(f"File {file_path} not an .xlsx file.")
-       return None
+       return None,None
 
 
     file_name= os.path.basename(file_path)
@@ -81,13 +94,14 @@ def migration_status(table_name,file_name, log_file):
    if os.path.exists(log_file):
        with open(log_file,'r') as log:
            fileMigrated = {line.strip() for line in log.readlines()}           
-             
-           if file_name in fileMigrated:
-               tableMigrated=file_name.split(" in to table ")[-1].strip() #mi serve nel caso in cui si vuole migrare un file già migrato in un'altra tabella
-               if tableMigrated==table_name:
-                   statusMap[file_name]=FILE_NOT_MIGRATED
+           
+           lines = [line for line in fileMigrated if file_name in line]
+           if lines:
+               tablesMigrated=[line.split(" in to table ")[-1].strip() for line  in lines] #mi serve nel caso in cui si vuole migrare un file già migrato in un'altra tabella
+               if table_name in tablesMigrated:
+                    statusMap[file_name]= FILE_MIGRATED                   
                else:
-                   statusMap[file_name]= FILE_MIGRATED
+                  statusMap[file_name]=FILE_NOT_MIGRATED
            else:
                statusMap[file_name]=FILE_NOT_MIGRATED      
           
@@ -187,10 +201,10 @@ def migration_phase(file,statusMap,db_name,table_name):
             return
         
     elif status == FILE_NOT_MIGRATED:
-            print(f"File {filename} to be migrated")
+            print(f"File name: {filename} to be migrated....")
             migrate_to_db(file,db_name,table_name)           
     else:
-            print(f"File {filename} already migrated, skipping")
+            print(f"File name: {filename} already migrated, skipping")
 
 
 def get_data_migrated(db_name,table_name):
@@ -234,7 +248,7 @@ def get_name_of_table_on_DB(db_name):
         db_name = default_db_name
         print(f"Database name not provided, using default database {default_db_name}")   
 
-    print(f"Get name of table on database {db_name}...")
+    print(f"Get table names on {db_name}...")
     try:
         with sqlite3.connect(db_name) as conn:
             c = conn.cursor()
@@ -276,9 +290,9 @@ def consistency_check(file,db_name,table_name):
        
     
     if not missing_data:
-        print(f"Data from file and data from database are consistent")
+        print(f"Consistency check PASSED, data from file and data from database MATCH")
     else:
-        print(f"Data from file and data from database are not consistent")
+        print(f"Consistency check FAILED, Data from file and data from database do NOT MATCH")
         print(f"Missing data: {missing_data}")
         
          
@@ -297,8 +311,26 @@ def main():
     
     #Initialize logger
     initialize_logger()
+    if args.file is None:
+        print("No file to be migrated.")
+        print("---------------------")
+        print("Usage:\n     python migrate_to_sql.py -f <file_path> -t <table_name>")
+        print("---------------------")
+        print("Example:\n     python migrate_to_sql.py -f path/data.xlsx -t test")
+        print("---------------------")
+        print("-f, --file : Path to the file .xlsx to be migrated")
+        print("-t, --table : Name of the table to be created on the database")
+        print("---------------------")
+        sys.exit(0)
 
+    if args.table is not None:
+        if not check_table_name_is_valid(args.table):
+            print(f"Invalid table name {args.table}")
+            print("Table name must start with a letter and contain only letters, numbers, and underscores")
+            sys.exit(0)
+    
     file_to_be_migrate,file_path = check_exist_migration_file(args.file)
+    
 
     if file_to_be_migrate is not None and file_path is not None:
         print("Ready for migration..\n")
@@ -316,8 +348,8 @@ def main():
         if tobemigrate == "y":
             status_map = migration_status(args.table,file_to_be_migrate,log_file)
             migration_phase(file_path,status_map, None, args.table)    
-            print("Migration completed")
-            tobeConsistencyCheck = input("Do you want to perform a consistency check? (y/n): ")
+            print("Migration phase completed...")
+            tobeConsistencyCheck = input("Do you want to run a consistency check? (y/n): ")
             if tobeConsistencyCheck == "y":
                 consistency_check(file_path,None,args.table)
                 sys.exit(0)
