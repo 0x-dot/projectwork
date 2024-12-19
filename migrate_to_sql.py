@@ -6,6 +6,7 @@ import pandas as pd
 import argparse
 import re
 import importlib.util
+import hashlib
 
 #log directory
 log_directory="migration_log"
@@ -147,7 +148,18 @@ def migrate_to_db(file,db_name,table_name):
     except Exception as e:
         print(f"Error during data migration: {e}")
     
-      
+
+def get_data_type_column(data,col):
+    try:
+        if data[col].dtype == 'int64':
+            return "INTEGER"
+        elif data[col].dtype == 'float64':
+            return "REAL"
+        else:
+            return "TEXT"
+    except Exception as e:
+        print(f"Error during column data type extraction: {e}")
+        return "TEXT"
    
     
 #Create table on db
@@ -156,7 +168,7 @@ def create_table_on_db(c,table_name,data):
     
     try:
         columns= "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        columns += ", ".join([f"{col.replace(' ','_').lower()} TEXT" for col in data.columns])
+        columns += ", ".join([f"{col.replace(' ','_').lower()} {get_data_type_column(data,col)}" for col in data.columns])
              
         create_table = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});"
         c.execute(create_table)
@@ -168,6 +180,8 @@ def create_table_on_db(c,table_name,data):
     print(f"End of SQL table creation..")
     
     
+def apply_hash(s):
+    return hashlib.sha256(s.encode()).hexdigest()
 
 #Insert data on db
 def insert_data_on_db (conn,c,table_name,data):
@@ -178,6 +192,12 @@ def insert_data_on_db (conn,c,table_name,data):
         columns = ", ".join([col.replace(' ', '_').lower() for col in data.columns])
         
         for row in data.itertuples(index=False,name=None):
+            #applico hash alle prime tre colonne
+            row = list(row)
+            row[0] = apply_hash(row[0])
+            row[1] = apply_hash(row[1])
+            row[2] = apply_hash(row[2])            
+            
             placeholders = ", ".join("?"*len(row))
             insert=f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"            
             c.execute(insert,row)           
@@ -237,6 +257,12 @@ def get_data_from_file(file):
         data= pd.read_excel(file)
         #normalizzazion dati per confronto
         convert_data = data.to_dict(orient='records')
+        #applico hash alle prime tre colonne
+        for  row in convert_data:
+            for i,key in enumerate(row.keys()):
+                if i <= 2:                
+                    row[key] = apply_hash(row[key]) 
+                    
         return convert_data
     except Exception as e:
         print(f"Error during data extraction: {e}")
@@ -262,6 +288,22 @@ def get_name_of_table_on_DB(db_name):
     
 
 
+
+def set_permissions_ownwer(file):
+    try:
+        st = os.stat(file)
+        current_permissions = st.st_mode & 0o777
+        if current_permissions == 0o600:
+            print(f"Permissions for {file} are already 600. Only the owner can read and write the file")
+            return
+        else:
+            os.chmod(file,0o600) # solo il proprietario puo' leggere e scrivere il file
+            print(f"Permissions for {file} have been set to 600. Only the owner can read and write the file")
+    
+    except Exception as e:
+        print(f"Error during setting permissions: {e}")
+
+
 def consistency_check(file,db_name,table_name):
     
     if table_name is None:
@@ -281,7 +323,7 @@ def consistency_check(file,db_name,table_name):
     data_from_file = get_data_from_file(file)
     data_from_db = get_data_migrated(db_name,table_name)    
     
-    
+   
     missing_data = []
     
     for row in data_from_file:        
@@ -352,7 +394,14 @@ def main():
             tobeConsistencyCheck = input("Do you want to run a consistency check? (y/n): ")
             if tobeConsistencyCheck == "y":
                 consistency_check(file_path,None,args.table)
-                sys.exit(0)
+                
+                set_permissions= input(f"Do you want to set permissions to {default_db_name} file? (y/n): ")
+                if set_permissions == "y":
+                    set_permissions_ownwer(default_db_name)                   
+                    sys.exit(0)
+                else:
+                    print("Permissions not set to file")
+                    sys.exit(0)
             else:
                 print("Consistency check aborted")
                 sys.exit(0)
