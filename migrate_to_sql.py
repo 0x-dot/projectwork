@@ -122,7 +122,7 @@ def get_name_of_file(filename):
 
 
 #Migrate data to db
-def migrate_to_db(file,db_name,table_name):
+def migrate_to_db(file,db_name,table_name, hash):
     print(f"Migration in progress..")
   
     if db_name is None:
@@ -142,7 +142,7 @@ def migrate_to_db(file,db_name,table_name):
             data= pd.read_excel(file)       
             
             create_table_on_db(c,table_name,data)       
-            insert_data_on_db(conn,c,table_name,data)
+            insert_data_on_db(conn,c,table_name,data,hash)
             write_log(filename,table_name)
   
     except Exception as e:
@@ -184,7 +184,7 @@ def apply_hash(s):
     return hashlib.sha256(s.encode()).hexdigest()
 
 #Insert data on db
-def insert_data_on_db (conn,c,table_name,data):
+def insert_data_on_db (conn,c,table_name,data,hash):
     print(f"Insert data into SQL table {table_name}...")
     try:
         conn.execute("BEGIN TRANSACTION;")
@@ -193,10 +193,11 @@ def insert_data_on_db (conn,c,table_name,data):
         
         for row in data.itertuples(index=False,name=None):
             #applico hash alle prime tre colonne
-            row = list(row)
-            row[0] = apply_hash(row[0])
-            row[1] = apply_hash(row[1])
-            row[2] = apply_hash(row[2])            
+            if hash:
+                row = list(row)
+                row[0] = apply_hash(row[0])
+                row[1] = apply_hash(row[1])
+                row[2] = apply_hash(row[2])            
             
             placeholders = ", ".join("?"*len(row))
             insert=f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"            
@@ -211,7 +212,7 @@ def insert_data_on_db (conn,c,table_name,data):
          
     
 #Migration phase
-def migration_phase(file,statusMap,db_name,table_name):   
+def migration_phase(file,statusMap,db_name,table_name,apply_hash):   
     filename = os.path.basename(file)
     
     status = statusMap.get(filename)
@@ -222,9 +223,10 @@ def migration_phase(file,statusMap,db_name,table_name):
         
     elif status == FILE_NOT_MIGRATED:
             print(f"File name: {filename} to be migrated....")
-            migrate_to_db(file,db_name,table_name)           
+            migrate_to_db(file,db_name,table_name,apply_hash)           
     else:
             print(f"File name: {filename} already migrated, skipping")
+            return apply_hash
 
 
 def get_data_migrated(db_name,table_name):
@@ -252,16 +254,17 @@ def get_data_migrated(db_name,table_name):
         print(f"Error during file name extraction: {e}")
         return []
     
-def get_data_from_file(file):
+def get_data_from_file(file,hash):
     try:
         data= pd.read_excel(file)
         #normalizzazion dati per confronto
         convert_data = data.to_dict(orient='records')
         #applico hash alle prime tre colonne
-        for  row in convert_data:
-            for i,key in enumerate(row.keys()):
-                if i <= 2:                
-                    row[key] = apply_hash(row[key]) 
+        if hash:
+            for  row in convert_data:
+                for i,key in enumerate(row.keys()):
+                    if i <= 2:                
+                        row[key] = apply_hash(row[key]) 
                     
         return convert_data
     except Exception as e:
@@ -298,13 +301,13 @@ def set_permissions_ownwer(file):
             return
         else:
             os.chmod(file,0o600) # solo il proprietario puo' leggere e scrivere il file
-            print(f"Permissions for {file} have been set to 600. Only the owner can read and write the file")
+            print(f"Permissions for {file} is set to 600. Only the owner can read and write the file")
     
     except Exception as e:
         print(f"Error during setting permissions: {e}")
 
 
-def consistency_check(file,db_name,table_name):
+def consistency_check(file,db_name,table_name,apply_hash):
     
     if table_name is None:
         table_name = default_table_name
@@ -320,7 +323,7 @@ def consistency_check(file,db_name,table_name):
     else:
         print(f"Table {table_name} found in database")
     
-    data_from_file = get_data_from_file(file)
+    data_from_file = get_data_from_file(file,apply_hash)
     data_from_db = get_data_migrated(db_name,table_name)    
     
    
@@ -349,7 +352,10 @@ def main():
 
     parser.add_argument("-f","--file",help="Path to the file .xlsx to be migrated")
     parser.add_argument("-t","--table",help="Name of the table to be created on the database")
-    args = parser.parse_args()        
+    parser.add_argument("-hash","--hash",help="Apply hash to the data",action="store_true")
+    args = parser.parse_args()       
+    
+
     
     #Initialize logger
     initialize_logger()
@@ -362,6 +368,7 @@ def main():
         print("---------------------")
         print("-f, --file : Path to the file .xlsx to be migrated")
         print("-t, --table : Name of the table to be created on the database")
+        print("-hash, --hash : Apply hash to the data")
         print("---------------------")
         sys.exit(0)
 
@@ -370,6 +377,8 @@ def main():
             print(f"Invalid table name {args.table}")
             print("Table name must start with a letter and contain only letters, numbers, and underscores")
             sys.exit(0)
+            
+    
     
     file_to_be_migrate,file_path = check_exist_migration_file(args.file)
     
@@ -380,6 +389,11 @@ def main():
         print(f"File path: {file_path}")
         print(f"Log file: {log_file}")
         print(f"Database name : {default_db_name}")
+        if args.hash:
+            print("Hashing will be applied\n")
+        else:
+            print("Hashing will not be applied")        
+        
         if args.table is not None:
             print(f"Table name : {args.table}")
         else:            
@@ -389,12 +403,11 @@ def main():
             
         if tobemigrate == "y":
             status_map = migration_status(args.table,file_to_be_migrate,log_file)
-            migration_phase(file_path,status_map, None, args.table)    
+            migration_phase(file_path,status_map, None, args.table, args.hash)    
             print("Migration phase completed...")
             tobeConsistencyCheck = input("Do you want to run a consistency check? (y/n): ")
             if tobeConsistencyCheck == "y":
-                consistency_check(file_path,None,args.table)
-                
+                consistency_check(file_path,None,args.table,args.hash)                
                 set_permissions= input(f"Do you want to set permissions to {default_db_name} file? (y/n): ")
                 if set_permissions == "y":
                     set_permissions_ownwer(default_db_name)                   

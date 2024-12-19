@@ -29,7 +29,7 @@ Secondo Script **migrate_to_sql.py**:
       
       (necessario) -f o --file: percorso del file da migrare
       (opzionale)  -t o --table: nome della tabella da creare sul database ( se non viene passato nulla la tabella verrà creata con un nome di default "testpw")
-      
+      (opzionale)  -hash o --hash: se il tag è presente applica hashing alle prime tre colonne della tabella.
       python3 migrate_to_sql_.py -f generated_data/nomefile.xlsx -t nometabella
   
   
